@@ -52,7 +52,7 @@ module.exports = function RedisShard(options) {
   var UNSHARDABLE = [
     "auth", "bgrewriteaof", "bgsave", "bitop", "brpoplpush", "client kill", "client list", "client getname",
     "client setname", "config get", "config set", "config resetstat", "dbsize", "debug segfault", "discard",
-    "echo", "eval", "evalsha", "exec", "flushall", "flushdb", "info", "keys", "lastsave", "migrate", "monitor",
+    "echo", "evalsha", "exec", "flushall", "flushdb", "info", "keys", "lastsave", "migrate", "monitor",
     "mset", "msetnx", "multi", "object", "ping", "psubscribe", "punsubscribe", "quit", "randomkey",
     "rpoplpush", "save", "script exists", "script flush", "script kill", "script load", "sdiffstore", "select",
     "shutdown", "sinterstore", "slaveof", "slowlog", "smove", "subscribe", "sunionstore", "sync", "time",
@@ -63,6 +63,23 @@ module.exports = function RedisShard(options) {
       throw new Error(command + ' is not shardable');
     };
   });
+
+  // Can use "eval" if we shard on first key
+  self["eval"] = function() {
+    var args = Array.prototype.slice.call(arguments); // may need to modify arguments
+    if (args[1] !== 1) { // 2nd argument is numkeys
+      if (args[args.length - 1] !== true) {
+        throw new Error('eval cannot be sharded when operating on more than one key. Set last argument to "true" to ignore warning and simply shard on first key.');
+      }
+      else {
+        // user accepted warning above, so remove last argument
+        args.pop();
+      }
+    }
+    var node = self.ring.get(args[2]); // 3rd argument will be key
+    var client = clients[node];
+    client["eval"].apply(client, args);
+  };
 
   // This is the tricky part - pipeline commands to multiple servers
   self.multi = function Multi() {
